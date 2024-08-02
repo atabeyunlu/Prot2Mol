@@ -63,11 +63,15 @@ if __name__ == "__main__":
     max_length = config.max_len  # Change this to the length you want to pad to
     
     dataset = create_hf_dataset(path, "structure.npy")
+    if not os.path.exists("./data/prot_embed/af2_struct"):
+        os.makedirs("./data/prot_embed/af2_struct")
     dataset.save_to_disk("./data/prot_embed/af2_struct/embeddings")
-    
+    if not os.path.exists("./data/prot_embed/af2_single"):
+        os.makedirs("./data/prot_embed/af2_single")
     dataset = create_hf_dataset(path, "single.npy")
     dataset.save_to_disk("./data/prot_embed/af2_single/embeddings")
-    
+    if not os.path.exists("./data/prot_embed/af2_combined"):
+        os.makedirs("./data/prot_embed/af2_combined")
     dataset = create_combined_hf_dataset(path)
     dataset.save_to_disk("./data/prot_embed/af2_combined/embeddings")
     

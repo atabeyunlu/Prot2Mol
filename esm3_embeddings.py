@@ -11,7 +11,7 @@ from esm.tokenization import get_model_tokenizers
 from esm.utils.constants.models import ESM3_OPEN_SMALL
 from esm.sdk.api import (ESMProtein,ESMProteinTensor,SamplingConfig,SamplingTrackConfig,)
 
-login(token="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")
+
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -75,8 +75,8 @@ def add_padding(protein_tensor: ESMProteinTensor, max_length: int) -> ESMProtein
     return protein_tensor
 
 
-def produce_esm3_embeddings(seq, max_len):
-
+def produce_esm3_embeddings(seq, max_len, hf_token):
+    login(token=hf_token)
     protein = ESMProtein(
         sequence=(
             seq
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     data = pd.read_csv(config.dataset)
     unique_target  = data.drop_duplicates(subset=['Target_CHEMBL_ID']).drop(axis=1, labels=["Compound_CHEMBL_ID", "Compound_SELFIES"])
     
-    token_rep = np.array([produce_esm3_embeddings(seq, config.max_len).cpu().numpy() for seq in unique_target["Target_FASTA"]])
+    token_rep = np.array([produce_esm3_embeddings(seq, config.max_len, config.huggingface_token).cpu().numpy() for seq in unique_target["Target_FASTA"]])
     
     
     print(token_rep.shape)
