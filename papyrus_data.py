@@ -1,5 +1,6 @@
 import os
 import lzma
+import argparse
 import requests
 import pandas as pd
 from conversion import ChemblUniprotConverter, process_in_parallel
@@ -15,38 +16,37 @@ def download_and_decompress(url, output_dir):
     compressed_file_path = os.path.join(output_dir, filename)
     decompressed_file_path = os.path.join(output_dir, filename.replace('.xz', ''))
 
-    # Download the file
-    response = requests.get(url, stream=True)
-    response.raise_for_status()  # Check if the request was successful
-    with open(compressed_file_path, 'wb') as compressed_file:
-        for chunk in response.iter_content(chunk_size=8192):
-            compressed_file.write(chunk)
+    if os.path.exists(decompressed_file_path):
+        print(f"\nFile {decompressed_file_path} already exists. Skipping download.\n")
+        return decompressed_file_path
+    else:
+        print(f"Downloading and decompressing {url}...")
+        # Download the file
+        response = requests.get(url, stream=True)
+        response.raise_for_status()  # Check if the request was successful
+        with open(compressed_file_path, 'wb') as compressed_file:
+            for chunk in response.iter_content(chunk_size=8192):
+                compressed_file.write(chunk)
 
-    # Decompress the file
-    with lzma.open(compressed_file_path, 'rb') as compressed_file:
-        with open(decompressed_file_path, 'wb') as decompressed_file:
-            decompressed_file.write(compressed_file.read())
+        # Decompress the file
+        with lzma.open(compressed_file_path, 'rb') as compressed_file:
+            with open(decompressed_file_path, 'wb') as decompressed_file:
+                decompressed_file.write(compressed_file.read())
 
-    # Optionally remove the compressed file
-    os.remove(compressed_file_path)
+        # Optionally remove the compressed file
+        os.remove(compressed_file_path)
 
-    return decompressed_file_path
+        return decompressed_file_path
 
 def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_threshold=None, prot_len=None):
-    # Create the output directory if it doesn't exist
-    os.makedirs(output_directory, exist_ok=True)
 
-    # Download and decompress the files
     molecule_file = download_and_decompress(molecule_url, output_directory)
     protein_file = download_and_decompress(protein_url, output_directory)
-
-    print(f"Downloaded and decompressed molecule data to: {molecule_file}")
-    print(f"Downloaded and decompressed protein data to: {protein_file}")
     
     mol_data = pd.read_csv(molecule_file, sep='\t')
     prot_data = pd.read_csv(protein_file, sep='\t')
     
-    prot_comp_set = pd.merge(mol_data[["SMILES","accession", "pchembl_value_Mean"]], prot_data[["target_id","Length","Sequence"]], on="target_id")
+    prot_comp_set = pd.merge(mol_data[["SMILES","accession", "pchembl_value_Mean","target_id"]], prot_data[["target_id","Sequence"]], on="target_id")
 
     converter = ChemblUniprotConverter()
     
@@ -56,7 +56,9 @@ def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_thresho
     
     prot_comp_set.columns = ["Compound_SMILES", "Target_ID", 
                              "Target_Accession", "pchembl_value_Mean", 
-                             "Protein_Type", "Protein_Length", "Target_FASTA", "Target_CHEMBL_ID"]
+                             "Target_FASTA", "Target_CHEMBL_ID"]
+    
+    prot_comp_set["Protein_Length"] = prot_comp_set["Target_FASTA"].apply(len)
     
     prot_comp_set["Compound_SELFIES"] = process_in_parallel(prot_comp_set["Compound_SMILES"], 19)
 
@@ -65,7 +67,7 @@ def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_thresho
     if pchembl_threshold: 
         prot_comp_set = prot_comp_set[prot_comp_set["pchembl_value_Mean"] >= pchembl_threshold]
     if prot_len:
-        prot_comp_set = prot_comp_set[prot_comp_set["Protein_Length"] <= prot_len]
+        prot_comp_set = prot_comp_set[prot_comp_set["Protein_Length"] < prot_len]
         
     prot_comp_set[["Target_FASTA",
                    "Target_CHEMBL_ID",
@@ -73,10 +75,16 @@ def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_thresho
     
 
 if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pchembl_threshold",help="pchembl threshold, can be None", type=int, default=6)
+    parser.add_argument("--prot_len", help="Maximum protein length, can be None", type=int, default=500)
+    config = parser.parse_args()    
     # Create the output directory if it doesn't exist
     os.makedirs(output_directory, exist_ok=True)
 
     # Download and decompress the files
-    prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_threshold=None, prot_len=None)
+    prepare_papyrus(molecule_url, protein_url, output_directory, 
+                    pchembl_threshold=config.pchembl_threshold, prot_len=config.prot_len)
     
-    print("Papyrus data preparation complete.")
+    print("Papyrus data preparation complete.\n")

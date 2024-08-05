@@ -1,4 +1,5 @@
 import re
+import os
 import torch
 import argparse
 import pandas as pd
@@ -32,12 +33,23 @@ if __name__ == "__main__":
   
   parser = argparse.ArgumentParser()
   # Dataset parameters
-  parser.add_argument("--dataset", required=True, metavar="./data/train_128.csv", help="Path of the SELFIES dataset.")
+  parser.add_argument("--dataset", default="./data/papyrus/prot_comp_set_pchembl_None_protlen_None.csv", help="Path of the SELFIES dataset.")
+  parser.add_argument("--dataset_name", default="papyrus", required=True, help="Dataset name to be used to create prot_t5.")
+  parser.add_argument("--prot_len", default=500, help="Max length of the protein sequence.")
   config = parser.parse_args()
-
+  
+  prot_path = "./data/prot_embed/prot_t5/" + config.dataset_name + "/"
+  if not os.path.exists(prot_path):
+    os.makedirs(prot_path)
+  
+  csv_path = prot_path + "unique_target.csv"
   data = pd.read_csv(config.dataset)
-  unique_target  = data.drop_duplicates(subset=['Target_CHEMBL_ID']).drop(axis=1, labels=["Compound_CHEMBL_ID", "Compound_SELFIES"]).to_csv('./data/unique_target.csv', index=False)
-  data_files = {"target_data": "data/unique_target.csv"}
+  unique_target  = data.drop_duplicates(subset=['Target_CHEMBL_ID'])[["Target_CHEMBL_ID", "Target_FASTA"]]
+  unique_target["len"] = unique_target["Target_FASTA"].apply(lambda x: len(x))
+  unique_target = unique_target[unique_target["len"] < config.prot_len].reset_index(drop=True)
+  unique_target.to_csv(csv_path, index=False)
+
+  data_files = {"target_data": csv_path}
   ds = load_dataset('csv', data_files=data_files)
 
   target_data = ds["target_data"].map(
@@ -45,5 +57,5 @@ if __name__ == "__main__":
       batched=True,
       batch_size=64, 
       remove_columns=["Target_FASTA"])
-
-  target_data.save_to_disk('./data/prot_embed/prot_t5/embeddings')
+  hf_path = prot_path + "embeddings"
+  target_data.save_to_disk(hf_path)

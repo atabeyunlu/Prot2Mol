@@ -75,8 +75,8 @@ def add_padding(protein_tensor: ESMProteinTensor, max_length: int) -> ESMProtein
     return protein_tensor
 
 
-def produce_esm3_embeddings(seq, max_len, hf_token):
-    login(token=hf_token)
+def produce_esm3_embeddings(seq, max_len):
+    
     protein = ESMProtein(
         sequence=(
             seq
@@ -84,7 +84,7 @@ def produce_esm3_embeddings(seq, max_len, hf_token):
         )
 
     protein_tensor = client.encode(protein)
-    protein_tensor_padded = add_padding(protein_tensor, max_len)
+    protein_tensor_padded = add_padding(protein_tensor, max_len+2)
     output = client.forward_and_sample(
         protein_tensor_padded,
         SamplingConfig(sequence=SamplingTrackConfig(), return_per_residue_embeddings=True),
@@ -98,21 +98,25 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     # Dataset parameters
-    parser.add_argument("--dataset", required=True, metavar="./data/train_128.csv", help="Path of the SELFIES dataset.")
-    parser.add_argument("--max_len", required=True, metavar=1024, help="Maximum protein length")
-    parser.add_argument("--huggingface_token", required=True, metavar="<token>", help="User huggingface token (read only)")    
+    parser.add_argument("--dataset", required=False, default="./data/papyrus/prot_comp_set_pchembl_6_protlen_500.csv", help="Path of the SELFIES dataset.")
+    parser.add_argument("--max_len", required=False,type=int, default=500, help="Maximum protein length")
+    parser.add_argument("--dataset_name", default="papyrus", required=True, help="Dataset name to be used to create esm3.")
+    parser.add_argument("--huggingface_token", required=True, default="<token>", help="User huggingface token (read only)")    
     config = parser.parse_args()    
-
+    
+    login(token=config.huggingface_token, add_to_git_credential=True)
+    
     data = pd.read_csv(config.dataset)
-    unique_target  = data.drop_duplicates(subset=['Target_CHEMBL_ID']).drop(axis=1, labels=["Compound_CHEMBL_ID", "Compound_SELFIES"])
-    
-    token_rep = np.array([produce_esm3_embeddings(seq, config.max_len, config.huggingface_token).cpu().numpy() for seq in unique_target["Target_FASTA"]])
-    
+    unique_target  = data.drop_duplicates(subset=['Target_CHEMBL_ID'])[["Target_CHEMBL_ID", "Target_FASTA"]]
+    unique_target["len"] = unique_target["Target_FASTA"].apply(lambda x: len(x))
+    unique_target = unique_target[unique_target["len"] < config.max_len].reset_index(drop=True)
+    token_rep = np.array([produce_esm3_embeddings(seq, config.max_len).cpu().numpy() for seq in unique_target["Target_FASTA"]])
     
     print(token_rep.shape)
     
     ds = Dataset.from_dict({"Target_CHEMBL_ID": list(unique_target["Target_CHEMBL_ID"]), "encoder_hidden_states": token_rep})
-    ds.save_to_disk('./data/prot_embed/esm3/embeddings')
+    prot_path = "./data/prot_embed/esm3/" + config.dataset_name + "/"
+    ds.save_to_disk(prot_path)
         
 
 
