@@ -100,22 +100,22 @@ if __name__ == "__main__":
     # Dataset parameters
     parser.add_argument("--dataset", required=False, default="./data/papyrus/prot_comp_set_pchembl_6_protlen_500.csv", help="Path of the SELFIES dataset.")
     parser.add_argument("--max_len", required=False,type=int, default=500, help="Maximum protein length")
-    parser.add_argument("--dataset_name", default="papyrus", required=True, help="Dataset name to be used to create esm3.")
     parser.add_argument("--huggingface_token", required=True, default="<token>", help="User huggingface token (read only)")    
     config = parser.parse_args()    
     
     login(token=config.huggingface_token, add_to_git_credential=True)
-    
+    dataset_name = config.dataset.split("/")[-1].split(".")[0]
     data = pd.read_csv(config.dataset)
     unique_target  = data.drop_duplicates(subset=['Target_CHEMBL_ID'])[["Target_CHEMBL_ID", "Target_FASTA"]]
     unique_target["len"] = unique_target["Target_FASTA"].apply(lambda x: len(x))
     unique_target = unique_target[unique_target["len"] < config.max_len].reset_index(drop=True)
+    unique_target.to_csv("./data/prot_embed/esm3/" + dataset_name + "/unique_target.csv", index=False)
     token_rep = np.array([produce_esm3_embeddings(seq, config.max_len).cpu().numpy() for seq in unique_target["Target_FASTA"]])
     
     print(token_rep.shape)
     
     ds = Dataset.from_dict({"Target_CHEMBL_ID": list(unique_target["Target_CHEMBL_ID"]), "encoder_hidden_states": token_rep})
-    prot_path = "./data/prot_embed/esm3/" + config.dataset_name + "/"
+    prot_path = "./data/prot_embed/esm3/" + dataset_name + "/"
     ds.save_to_disk(prot_path)
         
 

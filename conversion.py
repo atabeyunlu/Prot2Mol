@@ -26,6 +26,7 @@ class ChemblUniprotConverter:
         if not os.path.exists(self.save_path):
             self.download_text_file(self.url, self.save_path)
         data = pd.read_table(self.save_path,  names=["ChEMBL_ID", "UniProt_ID", "Name", "Type"]).drop(axis=0, labels=0)
+        data = data[data["Type"] == "SINGLE PROTEIN"]
         return {item["ChEMBL_ID"]: item["UniProt_ID"] for item in data.to_dict('records')}
 
     def convert_2_chembl_id(self, input_id):

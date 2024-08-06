@@ -11,6 +11,7 @@ import selfies as sf
 import pandas as pd
 import yaml
 import argparse
+from train_val_test import train_val_test_split
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["WANDB_DISABLED"] = "false"
@@ -33,7 +34,8 @@ class TrainingScript(object):
 
     def __init__(self, config,
                        selfies_path, 
-                       pretrain_save_to):
+                       pretrain_save_to,
+                       dataset_name):
         
         self.selfies_path = selfies_path
         self.pretrain_save_to = pretrain_save_to
@@ -45,24 +47,32 @@ class TrainingScript(object):
         self.LEARNING_RATE = config.learning_rate
         self.WEIGHT_DECAY = config.weight_decay
         self.N_LAYER = config.n_layer
+        self.N_HEAD = config.n_head
         
         self.train_data = pd.read_csv("./data/train.csv")
         self.eval_data = pd.read_csv('./data/eval.csv')
         self.training_vec = np.load("./data/train_vecs.npy")
         
+        self.train_data, self.eval_data, self.test_data = train_val_test_split(self.data, "CHEMBL4282")
         
-        prot_emb_model_path = "./data/prot_embed/" + self.prot_emb_model + "/embeddings"
+        if "af2" in self.prot_emb_model:
+            self.prot_emb_model_path = f"./data/prot_embed/{self.prot_emb_model}/FoldedPapyrus_4581_v01/embeddings"
+        else:
+            prot_emb_model_path = f"./data/prot_embed/{self.prot_emb_model}/{dataset_name}/embeddings"
+        
         self.target_data = load_from_disk(prot_emb_model_path)
-        
+        self.N_EMBED = np.array(self.target_data[0]["encoder_hidden_states"]).shape[-1]
         self.tokenizer = BartTokenizer.from_pretrained("zjunlp/MolGen-large", padding_side="left")    
         self.alphabet =  list(sf.get_alphabet_from_selfies(list(self.train_data.Compound_SELFIES)))
         self.tokenizer.add_tokens(self.alphabet)
 
         self.configuration = GPT2Config(add_cross_attention=True, is_decoder = True,
-                                n_embd=1024, n_head=16, vocab_size=len(self.tokenizer.added_tokens_decoder), 
+                                n_embd=self.N_EMBED, n_head=self.N_HEAD, vocab_size=len(self.tokenizer.added_tokens_decoder), 
                                 n_positions=256, n_layer=self.N_LAYER, bos_token_id=self.tokenizer.bos_token_id,
                                 eos_token_id=self.tokenizer.eos_token_id)
         self.model = GPT2LMHeadModel(self.configuration)
+        
+        print("Model parameter count:", self.model.num_parameters())
 
     def gen(self, ligand, target, tokenizer):
         for i in range(len(ligand)):
@@ -143,14 +153,16 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", default=0.0005)
     parser.add_argument("--max_positional_emb", default=202)
     parser.add_argument("--n_layer", default=4)
+    parser.add_argument("--n_head", default=16)
     
     config = parser.parse_args()
     
     run_name = "lr_" + str(config.learning_rate) + "_bs_" + str(config.train_batch_size) + "_ep_" + str(config.epoch) + "_wd_" + str(config.weight_decay) + "_nlayer_" + str(config.n_layer)
-
+    dataset_name = config.selfies_path.split("/")[-1].split(".")[0]
     trainingscript = TrainingScript(hyperparameters_dict=config, 
                                     selfies_path=config.selfies_path, 
-                                    pretrain_save_to="./saved_models/" + run_name)
+                                    pretrain_save_to=f"./saved_models/{run_name}",
+                                    dataset_name = dataset_name)
     
     trainingscript.model_training()
 

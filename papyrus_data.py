@@ -38,24 +38,27 @@ def download_and_decompress(url, output_dir):
 
         return decompressed_file_path
 
-def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_threshold=None, prot_len=None):
-
+def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_threshold=None, prot_len=None, only_human=True):
+    
+    converter = ChemblUniprotConverter()
     molecule_file = download_and_decompress(molecule_url, output_directory)
     protein_file = download_and_decompress(protein_url, output_directory)
     
     mol_data = pd.read_csv(molecule_file, sep='\t')
     prot_data = pd.read_csv(protein_file, sep='\t')
+    if only_human:
+        prot_data = prot_data[prot_data["Organism"] == "Homo sapiens (Human)"].reset_index(drop=True)
     
     prot_comp_set = pd.merge(mol_data[["SMILES","accession", "pchembl_value_Mean","target_id"]], prot_data[["target_id","Sequence"]], on="target_id")
 
-    converter = ChemblUniprotConverter()
+    
     
     prot_comp_set['Target_CHEMBL_ID'] = prot_comp_set['accession'].apply(converter.convert_2_chembl_id)
     
     prot_comp_set = prot_comp_set[prot_comp_set['Target_CHEMBL_ID'].str.startswith("CHEMBL")] # later add a dict for uniprot id that are merged in database
-    
-    prot_comp_set.columns = ["Compound_SMILES", "Target_ID", 
-                             "Target_Accession", "pchembl_value_Mean", 
+
+    prot_comp_set.columns = ["Compound_SMILES", "Target_Accession",
+                             "pchembl_value_Mean", "Target_ID", 
                              "Target_FASTA", "Target_CHEMBL_ID"]
     
     prot_comp_set["Protein_Length"] = prot_comp_set["Target_FASTA"].apply(len)
@@ -63,28 +66,34 @@ def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_thresho
     prot_comp_set["Compound_SELFIES"] = process_in_parallel(prot_comp_set["Compound_SMILES"], 19)
 
     prot_comp_set = prot_comp_set.dropna()
-    
+    print(len(prot_comp_set))
     if pchembl_threshold: 
-        prot_comp_set = prot_comp_set[prot_comp_set["pchembl_value_Mean"] >= pchembl_threshold]
+        prot_comp_set = prot_comp_set[prot_comp_set["pchembl_value_Mean"] >= pchembl_threshold].reset_index(drop=True)
+        print(len(prot_comp_set))
     if prot_len:
-        prot_comp_set = prot_comp_set[prot_comp_set["Protein_Length"] < prot_len]
+        prot_comp_set = prot_comp_set[prot_comp_set["Protein_Length"] < prot_len].reset_index(drop=True)
+        print(len(prot_comp_set))
         
     prot_comp_set[["Target_FASTA",
                    "Target_CHEMBL_ID",
-                   "Compound_SELFIES"]].to_csv("./data/papyrus/prot_comp_set_pchembl_{}_protlen_{}.csv".format(pchembl_threshold,prot_len), index=False)
+                   "Compound_SELFIES"]].to_csv("./data/papyrus/prot_comp_set_pchembl_{}_protlen_{}_human_{}.csv".format(pchembl_threshold,
+                                                                                                                        prot_len, 
+                                                                                                                        only_human), index=False)
     
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pchembl_threshold",help="pchembl threshold, can be None", type=int, default=6)
+    parser.add_argument("--pchembl_threshold",help="pchembl threshold, can be None", type=int, default=None)
     parser.add_argument("--prot_len", help="Maximum protein length, can be None", type=int, default=500)
+    parser.add_argument("--human_only", help="Only human proteins", type=bool, default=False)
     config = parser.parse_args()    
     # Create the output directory if it doesn't exist
     os.makedirs(output_directory, exist_ok=True)
 
     # Download and decompress the files
     prepare_papyrus(molecule_url, protein_url, output_directory, 
-                    pchembl_threshold=config.pchembl_threshold, prot_len=config.prot_len)
+                    pchembl_threshold=config.pchembl_threshold, 
+                    prot_len=config.prot_len, only_human=config.human_only)
     
     print("Papyrus data preparation complete.\n")
