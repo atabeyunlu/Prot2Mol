@@ -8,7 +8,7 @@ from conversion import ChemblUniprotConverter, process_in_parallel
 # Define the URLs and the output directory
 molecule_url = "https://zenodo.org/records/7019874/files/05.5++_combined_set_without_stereochemistry.tsv.xz"
 protein_url = "https://zenodo.org/records/7019874/files/05.5_combined_set_protein_targets.tsv.xz"
-output_directory = "./data/papyrus/"
+output_directory = "../data/papyrus/"
 
 def download_and_decompress(url, output_dir):
     # Get the filename from the URL
@@ -76,7 +76,7 @@ def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_thresho
         
     prot_comp_set[["Target_FASTA",
                    "Target_CHEMBL_ID",
-                   "Compound_SELFIES"]].to_csv("./data/papyrus/prot_comp_set_pchembl_{}_protlen_{}_human_{}.csv".format(pchembl_threshold,
+                   "Compound_SELFIES"]].to_csv("../data/papyrus/prot_comp_set_pchembl_{}_protlen_{}_human_{}.csv".format(pchembl_threshold,
                                                                                                                         prot_len, 
                                                                                                                         only_human), index=False)
     

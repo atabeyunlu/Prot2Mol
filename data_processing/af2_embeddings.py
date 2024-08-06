@@ -75,9 +75,9 @@ if __name__ == "__main__":
     parser.add_argument("--max_len", required=False, default=500, help="Maximum protein length")
     config = parser.parse_args()        
     
-    save_path = "./data/FoldedPapyrus_4581_v01.zip"
+    save_path = "../data/FoldedPapyrus_4581_v01.zip"
     af2_url = "https://zenodo.org/records/10671261/files/FoldedPapyrus_4581_v01.zip"
-    target_dir = "./data/af2/"
+    target_dir = "../data/af2/"
     
     if not os.path.exists(target_dir):
         print("\nDownloading AlphaFold2 embeddings...\n")
@@ -87,24 +87,24 @@ if __name__ == "__main__":
     max_length = config.max_len  # Change this to the length you want to pad to
     
     data_name = save_path.split("/")[-1].split(".")[0]
-    path = f"./data/af2/proteins"
+    path = f"../data/af2/proteins"
     
     print("Processing AlphaFold2 embeddings...\n")
     
     dataset = create_hf_dataset(path, "structure.npy", config.max_len)
-    if not os.path.exists(f"./data/prot_embed/af2_struct/{data_name}"):
-        os.makedirs(f"./data/prot_embed/af2_struct/{data_name}") 
-    dataset.save_to_disk(f"./data/prot_embed/af2_struct/{data_name}/embeddings")
+    if not os.path.exists(f"../data/prot_embed/af2_struct/{data_name}"):
+        os.makedirs(f"../data/prot_embed/af2_struct/{data_name}") 
+    dataset.save_to_disk(f"../data/prot_embed/af2_struct/{data_name}/embeddings")
     
-    if not os.path.exists(f"./data/prot_embed/af2_single/{data_name}"):
-        os.makedirs(f"./data/prot_embed/af2_single/{data_name}")
+    if not os.path.exists(f"../data/prot_embed/af2_single/{data_name}"):
+        os.makedirs(f"../data/prot_embed/af2_single/{data_name}")
     dataset = create_hf_dataset(path, "single.npy", config.max_len)
-    dataset.save_to_disk(f"./data/prot_embed/af2_single/{data_name}/embeddings")
+    dataset.save_to_disk(f"../data/prot_embed/af2_single/{data_name}/embeddings")
     
-    if not os.path.exists(f"./data/prot_embed/af2_combined/{data_name}"):
-        os.makedirs(f"./data/prot_embed/af2_combined/{data_name}")
+    if not os.path.exists(f"../data/prot_embed/af2_combined/{data_name}"):
+        os.makedirs(f"../data/prot_embed/af2_combined/{data_name}")
     dataset = create_combined_hf_dataset(path, config.max_len)
-    dataset.save_to_disk(f"./data/prot_embed/af2_combined/{data_name}/embeddings")
+    dataset.save_to_disk(f"../data/prot_embed/af2_combined/{data_name}/embeddings")
     
     print("Residual files are being removed...\n")
     

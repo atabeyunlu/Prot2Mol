@@ -16,7 +16,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     # Dataset parameters
-    parser.add_argument("--dataset", required=False, default="./data/papyrus/prot_comp_set_pchembl_None_protlen_500_human_False.csv", help="Path of the SELFIES dataset.")
+    parser.add_argument("--dataset", required=False, default="../data/papyrus/prot_comp_set_pchembl_None_protlen_500_human_False.csv", help="Path of the SELFIES dataset.")
     parser.add_argument("--test_ids", required=False, default="CHEMBL4282", help="Protein ids for test set.")
     config = parser.parse_args()
     

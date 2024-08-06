@@ -33,12 +33,12 @@ if __name__ == "__main__":
   
   parser = argparse.ArgumentParser()
   # Dataset parameters
-  parser.add_argument("--dataset", default="./data/papyrus/prot_comp_set_pchembl_None_protlen_None.csv", help="Path of the SELFIES dataset.")
+  parser.add_argument("--dataset", default="../data/papyrus/prot_comp_set_pchembl_None_protlen_None.csv", help="Path of the SELFIES dataset.")
   parser.add_argument("--prot_len", default=500, help="Max length of the protein sequence.")
   config = parser.parse_args()
   
   dataset_name = config.dataset.split("/")[-1].split(".")[0]
-  prot_path = "./data/prot_embed/prot_t5/" + dataset_name + "/"
+  prot_path = "../data/prot_embed/prot_t5/" + dataset_name + "/"
   if not os.path.exists(prot_path):
     os.makedirs(prot_path)
   
