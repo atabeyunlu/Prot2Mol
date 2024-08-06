@@ -164,62 +164,99 @@ def average_agg_tanimoto(stock_vecs, gen_vecs,
         agg_tanimoto /= total
     if p != 1:
         agg_tanimoto = (agg_tanimoto)**(1/p)
-    return np.mean(agg_tanimoto) if no_list else agg_tanimoto
+    return np.mean(agg_tanimoto) if no_list else np.mean(agg_tanimoto), agg_tanimoto
 
+def generate_vecs(mols):
+    vecs = []
+    for mol in mols:
+        if mol is not None:
+            vecs.append(AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=1024))
+        else:
+            vecs.append(None)
+    return np.array(vecs)
+
+def to_mol(smiles_list):
+    mols = []
+    for smiles in smiles_list:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is not None:
+            mols.append(mol)
+        else:
+            mols.append(None)
+    return mols
+
+def sascorer_calculation(mols):
+    scores = []
+    for mol in mols:
+        if mol is not None:
+            scores.append(sascorer.calculateScore(mol))
+        else:
+            scores.append(None)
+    return scores
+
+def qed_calculation(mols):
+    scores = []
+    for mol in mols:
+        if mol is not None:
+            scores.append(QED.qed(mol))
+        else:
+            scores.append(None)
+    return scores
+
+def logp_calculation(mols):
+    scores = []
+    for mol in mols:
+        if mol is not None:
+            scores.append(Chem.Crippen.MolLogP(mol))
+        else:
+            scores.append(None)
+    return scores
 
 def metrics_calculation(predictions, references, train_data, train_vec,training=True):
-    
-    # clear tokenizer white spaces
-    
+
     predictions = [x.replace(" ", "") for x in predictions]
     references = [x.replace(" ", "") for x in references]
 
-    prediction_smiles = [sf.decoder(x) for x in predictions]
+    prediction_smiles = pd.DataFrame([sf.decoder(x) for x in predictions], columns=["smiles"])
     
-    prediction_validity_ratio = fraction_valid(prediction_smiles)
-
+    prediction_validity_ratio = fraction_valid(list(prediction_smiles["smiles"]))
     
     if prediction_validity_ratio != 0:
         
-        prediction_mols = [Chem.MolFromSmiles(x) for x in prediction_smiles if x != '']
+        prediction_mols = to_mol(list(prediction_smiles["smiles"]))
     
         training_data_smiles = [sf.decoder(x) for x in train_data.Compound_SELFIES]
         reference_smiles = [sf.decoder(x) for x in references] 
         
         prediction_uniqueness_ratio = fraction_unique(prediction_smiles)
         
-        prediction_smiles_novelty_against_training_samples = novelty(prediction_smiles, training_data_smiles)
-
-        prediction_smiles_novelty_against_reference_samples = novelty(prediction_smiles, reference_smiles)
+        prediction_smiles_novelty_against_training_samples = novelty(list(prediction_smiles["smiles"]), training_data_smiles)
+        prediction_smiles_novelty_against_reference_samples = novelty(list(prediction_smiles["smiles"]), reference_smiles)
         
-        prediction_vecs = np.array([AllChem.GetMorganFingerprintAsBitVect(x, 2, nBits=1024) for x in prediction_mols if x is not None])
-        reference_vec = np.array([AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(x), 2, nBits=1024) for x in reference_smiles if Chem.MolFromSmiles(x) is not None])
+        prediction_vecs = np.array(generate_vecs(prediction_mols))
+        reference_vec = np.array(generate_vecs([Chem.MolFromSmiles(x) for x in reference_smiles if Chem.MolFromSmiles(x) is not None]))
         
-        #gen_smi_imgs_grid = Draw.MolsToGridImage(prediction_mols[:16], molsPerRow=4, subImgSize=(600, 600))
-        
-        #wandb.log({"examples":gen_smi_imgs_grid})
-        
-        predicted_vs_reference_sim = average_agg_tanimoto(reference_vec,prediction_vecs)
-        
-
-        predicted_vs_training_sim = average_agg_tanimoto(train_vec,prediction_vecs)
+        predicted_vs_reference_sim_mean, predicted_vs_reference_sim_list = average_agg_tanimoto(reference_vec,prediction_vecs, no_list=False)
+        predicted_vs_training_sim_mean, predicted_vs_training_sim_list = average_agg_tanimoto(train_vec,prediction_vecs, no_list=False)
         
         IntDiv = 1 - average_agg_tanimoto(prediction_vecs, prediction_vecs, agg="mean")
         
-        prediction_sa_score = np.mean([sascorer.calculateScore(x) for x in prediction_mols if x is not None])
-
-        prediction_qed_score = np.mean([QED.qed(x) for x in prediction_mols if x is not None])
+        prediction_sa_score_list = sascorer_calculation(prediction_mols)
+        prediction_sa_score = np.mean(prediction_sa_score_list)
         
-        prediction_logp_score = np.mean([Chem.Crippen.MolLogP(x) for x in prediction_mols if x is not None])
+        prediction_qed_score_list = qed_calculation(prediction_mols)
+        prediction_qed_score = np.mean(prediction_qed_score_list)
         
+        prediction_logp_score_list = logp_calculation(prediction_mols)
+        prediction_logp_score = np.mean(prediction_logp_score_list)
         
         metrics = {"validity": prediction_validity_ratio,
                    "uniqueness": prediction_uniqueness_ratio,
                    "novelty_against_training_samples": prediction_smiles_novelty_against_training_samples,
                    "novelty_against_reference_samples": prediction_smiles_novelty_against_reference_samples,
                    "intdiv": IntDiv,
-                   "similarity_to_training_samples": predicted_vs_training_sim,
-                   "similarity_to_reference_samples": predicted_vs_reference_sim,
+                   "similarity_to_training_samples": predicted_vs_training_sim_mean,
+                   "similarity_to_reference_samples": predicted_vs_reference_sim_mean,
                    "sa_score": prediction_sa_score,
                    "qed_score": prediction_qed_score,
                    "logp_score": prediction_logp_score}
@@ -240,7 +277,16 @@ def metrics_calculation(predictions, references, train_data, train_vec,training=
     if training:
         return metrics
     else:
-        return metrics, prediction_smiles
+        
+        result_dict = {"smiles": prediction_smiles, 
+                       "test_sim": predicted_vs_reference_sim_list, 
+                       "train_sim": predicted_vs_training_sim_list,
+                       "sa_score": prediction_sa_score_list,
+                       "qed_score": prediction_qed_score_list,
+                       "logp_score": prediction_logp_score_list}
+        results = pd.DataFrame(result_dict)
+        
+        return metrics, prediction_smiles, results
         
 
 

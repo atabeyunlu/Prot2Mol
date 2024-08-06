@@ -156,7 +156,12 @@ if __name__ == "__main__":
     
     config = parser.parse_args()
 
-    run_name = "TARGET_" +  str(config.target_id) + "_lr_" + str(config.learning_rate) + "_bs_" + str(config.train_batch_size) + "_ep_" + str(config.epoch) + "_wd_" + str(config.weight_decay) + "_nlayer_" + str(config.n_layer)
+    run_name = f"""TARGET_{str(config.target_id)}_
+                    lr_{str(config.learning_rate)}_
+                    bs_{str(config.train_batch_size)}_
+                    ep_{str(config.epoch)}_
+                    wd_{str(config.weight_decay)}_
+                    nlayer_{str(config.n_layer)}"""
 
     trainingscript = FientuneScript(hyperparameters_dict=config, 
                                     selfies_path=config.selfies_path, 

@@ -7,7 +7,7 @@ import selfies as sf
 from datasets import load_from_disk
 from datasets import IterableDataset
 from utils import metrics_calculation
-from train_val_test import train_val_test_split
+from data_processing.train_val_test import train_val_test_split
 from transformers import Trainer, TrainingArguments
 from transformers import DataCollatorForLanguageModeling
 from transformers import BartTokenizer, GPT2Config, GPT2LMHeadModel
@@ -156,7 +156,14 @@ if __name__ == "__main__":
     
     config = parser.parse_args()
     
-    run_name = "lr_" + str(config.learning_rate) + "_bs_" + str(config.train_batch_size) + "_ep_" + str(config.epoch) + "_wd_" + str(config.weight_decay) + "_nlayer_" + str(config.n_layer)
+    run_name =  f"""lr_{str(config.learning_rate)}
+                    _bs_{str(config.train_batch_size)}
+                    _ep_{str(config.epoch)}
+                    _wd_{str(config.weight_decay)}
+                    _nlayer_{str(config.n_layer)}
+                    _nhead_{str(config.n_head)}
+                    _prot_{config.prot_emb_model}"""
+    
     dataset_name = config.selfies_path.split("/")[-1].split(".")[0]
     trainingscript = TrainingScript(hyperparameters_dict=config, 
                                     selfies_path=config.selfies_path, 
