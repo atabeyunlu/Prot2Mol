@@ -25,16 +25,17 @@ The processed data is saved as a CSV file in the specified output directory.
 
 Usage:
 ```bash
-    python papyrus_data.py [--pchembl_threshold P] [--prot_len L] [--human_only H]
+python papyrus_data.py [--pchembl_threshold P] [--prot_len L] [--human_only H]
 ```
+```bash
 Arguments:
     --pchembl_threshold (int): pchembl threshold for filtering compounds (default: None)
     --prot_len (int): maximum protein length for filtering proteins (default: None)
     --human_only (bool): flag to filter only human proteins (default: False)
-
+```
 Example:
 ```bash
-    python papyrus_data.py --pchembl_threshold 6 --prot_len 500 --human_only True
+python papyrus_data.py --pchembl_threshold 6 --prot_len 500 --human_only True
 ```
 ## AlphaFold2 Embedding Generator for Protein Sequences
 
@@ -44,10 +45,10 @@ This script downloads, processes, and organizes AlphaFold2 (AF2) embeddings into
 ```bash
 python af2_embeddings.py [--max_len L]
 ```
-
+```bash
 Arguments:
     --max_len (int): Maximum protein length to pad the embeddings to (default: 500).
-
+```
 Example:
 
 ```bash
@@ -60,17 +61,17 @@ This script generates embeddings for protein sequences using the ESM-2 model. It
 
 
 ```bash
-    python esm2_embeddings.py [--dataset PATH] [--prot_len L]
+python esm2_embeddings.py [--dataset PATH] [--prot_len L]
 ```
-
+```bash
 Arguments:
     --dataset (str): Path to the input dataset containing protein sequences (default: ../data/papyrus/prot_comp_set_pchembl_None_protlen_500_human_False.csv).
     --prot_len (int): Maximum length of the protein sequences to be considered for embedding (default: 500).
-
+```
 Example:
 
 ```bash
-    python esm2_embeddings.py --dataset ../data/my_dataset.csv --prot_len 500
+python esm2_embeddings.py --dataset ../data/my_dataset.csv --prot_len 500
 ```
 
 
@@ -82,16 +83,16 @@ This script generates embeddings for protein sequences using the ESM-3 model. It
 ```bash
 python esm3_embeddings.py [--dataset PATH] [--max_len L] [--huggingface_token TOKEN]
 ```
-
+```bash
 Arguments:
     --dataset (str): Path to the input dataset containing protein sequences (default: ../data/papyrus/prot_comp_set_pchembl_6_protlen_500.csv).
     --max_len (int): Maximum length of the protein sequences to be considered for embedding (default: 500).
     --huggingface_token (str): User's Hugging Face token for authentication (required).
-
+```
 Example:
 
 ```bash
-    python esm3_embeddings.py --dataset ../data/my_dataset.csv --max_len 500 --huggingface_token my_hf_token
+python esm3_embeddings.py --dataset ../data/my_dataset.csv --max_len 500 --huggingface_token my_hf_token
 ```
 
 
@@ -104,11 +105,11 @@ This script generates protein embeddings using the ProtT5 model from the Rostlab
 ```bash
 python prot_t5_embeddings.py [--dataset DATASET_PATH] [--prot_len PROTEIN_LENGTH]
 ```
-
+```bash
 Arguments:
     --dataset (str): Path to the input CSV file containing protein sequences (default: ../data/papyrus/prot_comp_set_pchembl_8_protlen_150_human_False.csv).
     --prot_len (int): Maximum length of the protein sequences to consider (default: 500).
-
+```
 Example:
 
 ```bash
@@ -125,7 +126,7 @@ This script is designed to train and evaluate a GPT-2 model with cross-attention
 ```bash
 python pretrain.py [--selfies_path SELFIES_PATH] [--prot_emb_model PROT_EMB_MODEL] [--prot_ID PROT_ID] [--learning_rate LEARNING_RATE] [--train_batch_size TRAIN_BATCH_SIZE] [--valid_batch_size VALID_BATCH_SIZE] [--epoch EPOCH] [--weight_decay WEIGHT_DECAY] [--n_layer N_LAYER] [--n_head N_HEAD]
 ```
-
+```bash
 Arguments:
 
 Dataset Parameters:
@@ -141,7 +142,7 @@ Model Parameters:
     --weight_decay (float): Weight decay for the optimizer (default: 0.0005).
     --n_layer (int): Number of layers in the GPT-2 model (default: 1).
     --n_head (int): Number of attention heads in the GPT-2 model (default: 4).
-
+```
 Example:
 
 ```bash 
@@ -156,7 +157,7 @@ This script fine-tunes a pre-trained Prot2Mol model on a specific target protein
 ```bash
 python finetune.py [--selfies_path SELFIES_PATH] [--target_id TARGET_ID] [--prot_emb_model PROT_EMB_MODEL] [--pretrained_model_path PRETRAINED_MODEL_PATH] [--learning_rate LEARNING_RATE] [--train_batch_size TRAIN_BATCH_SIZE] [--valid_batch_size VALID_BATCH_SIZE] [--epoch EPOCH] [--weight_decay WEIGHT_DECAY] [--n_layer N_LAYER]
 ```
-
+```bash
 Arguments:
 
 Dataset Parameters:
@@ -172,7 +173,7 @@ Model Parameters:
     --epoch (int): Number of epochs for fine-tuning (default: 50).
     --weight_decay (float): Weight decay for the optimizer during fine-tuning (default: 0.0005).
     --n_layer (int): Number of layers in the GPT-2 model during fine-tuning (default: 4).
-
+```
 Example:
 
 ```bash
@@ -187,7 +188,7 @@ This script is designed to generate molecular structures based on a pretrained m
 ```bash
 python produce_molecules.py [--model_file PATH] [--prot_emb_model PATH] [--generated_mol_file PATH] [--selfies_path PATH] [--attn_output BOOL] [--prot_id ID] [--num_samples N] [--bs N]
 ```
-
+```bash
 Arguments:
     --model_file (str): Path of the pretrained model file (default: ./finetuned_models/set_100_finetuned_model/checkpoint-3100).
     --prot_emb_model (str): Path of the pretrained protein embedding model (default: ./data/prot_embed/prot_t5/prot_comp_set_pchembl_None_protlen_None/embeddings).
@@ -197,7 +198,7 @@ Arguments:
     --prot_id (str): Target Protein ID for molecule generation (default: CHEMBL4282).
     --num_samples (int): Number of samples to generate (default: 10000).
     --bs (int): Batch size for molecule generation (default: 100).
-
+```
 Example:
 ```bash
 python produce_molecules.py --model_file ./finetuned_models/set_100_finetuned_model/checkpoint-3100  --prot_emb_model ./data/prot_embed/prot_t5/prot_comp_set_pchembl_None_protlen_None/embeddings --generated_mol_file ./saved_mols/generated_molecules.csv  --selfies_path ./data/papyrus/prot_comp_set_pchembl_None_protlen_500_human_False --attn_output False  --prot_id CHEMBL4282  --num_samples 10000  --bs 100
