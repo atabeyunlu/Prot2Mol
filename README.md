@@ -8,7 +8,7 @@ Target based molecule generation using protein embeddings and SELFIES molecule r
 ```bash
 git clone https://github.com/atabeyunlu/Prot2Mol.git
 
-pip install -r requierments.yaml
+pip install -r requirements.yaml
 ```
 
 # How to run?
