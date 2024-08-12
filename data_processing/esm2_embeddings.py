@@ -43,10 +43,8 @@ if __name__ == "__main__":
     token_rep = np.array([produce_esm2_embedding(seq, config.prot_len).detach().cpu().numpy() for seq in unique_target["Target_FASTA"]]).squeeze()
     
     print(token_rep.shape)
-
-    ds = Dataset.from_dict({"Target_CHEMBL_ID": list(unique_target["Target_CHEMBL_ID"]), "encoder_hidden_states": token_rep})
     
-    prot_path= f"../data/prot_embed/esm2/{dataset_name}/embeddings"
-    ds.save_to_disk(prot_path)
+    prot_path= f"../data/prot_embed/esm2/{dataset_name}/embeddings.npz"
+    np.savez(prot_path, Target_CHEMBL_ID=unique_target["Target_CHEMBL_ID"], encoder_hidden_states=token_rep)  # Save the embeddings
     
 

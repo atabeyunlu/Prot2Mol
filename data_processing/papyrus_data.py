@@ -49,43 +49,33 @@ def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_thresho
     if only_human:
         prot_data = prot_data[prot_data["Organism"] == "Homo sapiens (Human)"].reset_index(drop=True)
     
-    prot_comp_set = pd.merge(mol_data[["SMILES","accession", "pchembl_value_Mean","target_id"]], prot_data[["target_id","Sequence"]], on="target_id")
+    prot_comp_set = (
+            pd.merge(mol_data[["SMILES","accession", "pchembl_value_Mean","target_id"]], prot_data[["target_id","Sequence"]], on="target_id")
+            .assign(Target_CHEMBL_ID=lambda df: df['accession'].apply(converter.convert_2_chembl_id))
+            .query('Target_CHEMBL_ID.str.startswith("CHEMBL")')
+            .rename(columns={"SMILES": "Compound_SMILES", "accession": "Target_Accession", "target_id": "Target_ID", "Sequence": "Target_FASTA"})
+            .assign(Protein_Length=lambda df: df["Target_FASTA"].apply(len))
+            .assign(Compound_SELFIES=lambda df: process_in_parallel(df["Compound_SMILES"], 19))
+            .dropna())
 
-    
-    
-    prot_comp_set['Target_CHEMBL_ID'] = prot_comp_set['accession'].apply(converter.convert_2_chembl_id)
-    
-    prot_comp_set = prot_comp_set[prot_comp_set['Target_CHEMBL_ID'].str.startswith("CHEMBL")] # later add a dict for uniprot id that are merged in database
-
-    prot_comp_set.columns = ["Compound_SMILES", "Target_Accession",
-                             "pchembl_value_Mean", "Target_ID", 
-                             "Target_FASTA", "Target_CHEMBL_ID"]
-    
-    prot_comp_set["Protein_Length"] = prot_comp_set["Target_FASTA"].apply(len)
-    
-    prot_comp_set["Compound_SELFIES"] = process_in_parallel(prot_comp_set["Compound_SMILES"], 19)
-
-    prot_comp_set = prot_comp_set.dropna()
     print(len(prot_comp_set))
     if pchembl_threshold: 
-        prot_comp_set = prot_comp_set[prot_comp_set["pchembl_value_Mean"] >= pchembl_threshold].reset_index(drop=True)
+        prot_comp_set = prot_comp_set.query("pchembl_value_Mean >= @pchembl_threshold")
         print(len(prot_comp_set))
+
     if prot_len:
-        prot_comp_set = prot_comp_set[prot_comp_set["Protein_Length"] < prot_len].reset_index(drop=True)
+        prot_comp_set = prot_comp_set.query("Protein_Length < @prot_len")
         print(len(prot_comp_set))
         
-    prot_comp_set[["Target_FASTA",
-                   "Target_CHEMBL_ID",
-                   "Compound_SELFIES"]].to_csv("../data/papyrus/prot_comp_set_pchembl_{}_protlen_{}_human_{}.csv".format(pchembl_threshold,
-                                                                                                                        prot_len, 
-                                                                                                                        only_human), index=False)
-    
+    prot_comp_set[["Target_FASTA", "Target_CHEMBL_ID", "Compound_SELFIES"]].to_csv(
+        f"../data/papyrus/prot_comp_set_pchembl_{pchembl_threshold}_protlen_{prot_len}_human_{only_human}.csv", 
+        index=False)
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pchembl_threshold",help="pchembl threshold, can be None", type=int, default=None)
-    parser.add_argument("--prot_len", help="Maximum protein length, can be None", type=int, default=500)
+    parser.add_argument("--pchembl_threshold",help="pchembl threshold, can be None", type=int, default=8)
+    parser.add_argument("--prot_len", help="Maximum protein length, can be None", type=int, default=150)
     parser.add_argument("--human_only", help="Only human proteins", type=bool, default=False)
     config = parser.parse_args()    
     # Create the output directory if it doesn't exist

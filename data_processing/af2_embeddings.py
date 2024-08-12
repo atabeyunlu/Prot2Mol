@@ -50,23 +50,20 @@ def get_af2_embeddings(path, file_name, max_length):
 
     return all_structures, folder_names
 
-def create_combined_hf_dataset(path, max_length):
+def create_combined_hf_dataset(path, max_length, save_path):
     all_structures, folder_names = get_af2_embeddings(path, "structure.npy", max_length)
     all_single, _ = get_af2_embeddings(path, "single.npy", max_length)
     all_combined = np.concatenate((all_structures, all_single), axis=-1)
-    
     prot_names = [converter.convert_2_chembl_id(folder_name) for folder_name in folder_names]
-    combined_dataset = Dataset.from_dict({"Target_CHEMBL_ID": prot_names, "encoder_hidden_states": all_combined})
-    print("combined data:", all_combined.shape)
-    
-    return combined_dataset
 
-def create_hf_dataset(path, file_name, max_length):
+    print("combined data:", all_combined.shape)
+    np.savez(save_path, Target_CHEMBL_ID=prot_names, encoder_hidden_states=all_combined)
+
+def create_hf_dataset(path, file_name, max_length, save_path):
     all_structures, folder_names = get_af2_embeddings(path, file_name, max_length)
     prot_names = [converter.convert_2_chembl_id(folder_name) for folder_name in folder_names]
     print(file_name, ":", all_structures.shape)
-    dataset = Dataset.from_dict({"Target_CHEMBL_ID": prot_names, "encoder_hidden_states": all_structures})
-    return dataset
+    np.savez(save_path, Target_CHEMBL_ID=prot_names, encoder_hidden_states=all_structures)  # Save the embeddings
 
 if __name__ == "__main__":
     
@@ -91,20 +88,19 @@ if __name__ == "__main__":
     
     print("Processing AlphaFold2 embeddings...\n")
     
-    dataset = create_hf_dataset(path, "structure.npy", config.max_len)
+    
     if not os.path.exists(f"../data/prot_embed/af2_struct/{data_name}"):
         os.makedirs(f"../data/prot_embed/af2_struct/{data_name}") 
-    dataset.save_to_disk(f"../data/prot_embed/af2_struct/{data_name}/embeddings")
+    create_hf_dataset(path, "structure.npy", config.max_len, f"../data/prot_embed/af2_struct/{data_name}/embeddings.npz")
     
     if not os.path.exists(f"../data/prot_embed/af2_single/{data_name}"):
         os.makedirs(f"../data/prot_embed/af2_single/{data_name}")
-    dataset = create_hf_dataset(path, "single.npy", config.max_len)
-    dataset.save_to_disk(f"../data/prot_embed/af2_single/{data_name}/embeddings")
+    create_hf_dataset(path, "single.npy", config.max_len, f"../data/prot_embed/af2_single/{data_name}/embeddings.npz")
+    
     
     if not os.path.exists(f"../data/prot_embed/af2_combined/{data_name}"):
         os.makedirs(f"../data/prot_embed/af2_combined/{data_name}")
-    dataset = create_combined_hf_dataset(path, config.max_len)
-    dataset.save_to_disk(f"../data/prot_embed/af2_combined/{data_name}/embeddings")
+    create_combined_hf_dataset(path, config.max_len, f"../data/prot_embed/af2_combined/{data_name}/embeddings.npz")
     
     print("Residual files are being removed...\n")
     

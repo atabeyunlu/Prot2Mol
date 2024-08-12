@@ -2,6 +2,7 @@ import re
 import os
 import torch
 import argparse
+import numpy as np
 import pandas as pd
 from datasets import load_dataset
 from transformers import T5Tokenizer, T5EncoderModel
@@ -33,8 +34,8 @@ if __name__ == "__main__":
   
   parser = argparse.ArgumentParser()
   # Dataset parameters
-  parser.add_argument("--dataset", default="../data/papyrus/prot_comp_set_pchembl_None_protlen_None.csv", help="Path of the SELFIES dataset.")
-  parser.add_argument("--prot_len", default=500, help="Max length of the protein sequence.")
+  parser.add_argument("--dataset", default="../data/papyrus/prot_comp_set_pchembl_8_protlen_150_human_False.csv", help="Path of the SELFIES dataset.")
+  parser.add_argument("--prot_len", default=150, help="Max length of the protein sequence.")
   config = parser.parse_args()
   
   dataset_name = config.dataset.split("/")[-1].split(".")[0]
@@ -57,5 +58,6 @@ if __name__ == "__main__":
       batched=True,
       batch_size=64, 
       remove_columns=["Target_FASTA"])
-  hf_path = prot_path + "embeddings"
-  target_data.save_to_disk(hf_path)
+  hf_path = prot_path + "embeddings.npz"
+  #embeddings_with_ids = {id: embedding for id, embedding in zip(target_data["Target_CHEMBL_ID"], target_data["encoder_hidden_states"])}
+  np.savez(hf_path, Target_CHEMBL_ID=target_data["Target_CHEMBL_ID"], encoder_hidden_states=target_data["encoder_hidden_states"] )  # Save the embeddings
