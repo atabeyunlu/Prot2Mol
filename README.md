@@ -13,7 +13,7 @@ pip install -r requierments.yaml
 
 # How to run?
 
-Prot2Mol model can be run following the below documentation top-down.
+Prot2Mol model can be run following the below documentation top-down. It is necessary to prepare Protein-Compound data however you can process a single protein embedding to run the model. 
 
 # Data Processing
 
