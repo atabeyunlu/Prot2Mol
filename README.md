@@ -1,7 +1,8 @@
 # Prot2Mol
 Target based molecule generation using protein embeddings and SELFIES molecule representation.
 
-
+&nbsp;
+&nbsp;
 
 # Installation
 
@@ -11,11 +12,16 @@ git clone https://github.com/atabeyunlu/Prot2Mol.git
 pip install -r requirements.yaml
 ```
 
+&nbsp;
+&nbsp;
+
 # How to run?
 
 Prot2Mol model can be run following the below documentation top-down. It is necessary to prepare Protein-Compound data however you can process a single protein embedding to run the model. 
 
 # Data Processing
+&nbsp;
+&nbsp;
 
 ## Prepare Papyrus Protein-Compound Data
 
@@ -37,6 +43,8 @@ Example:
 ```bash
 python papyrus_data.py --pchembl_threshold 6 --prot_len 500 --human_only True
 ```
+&nbsp;
+&nbsp;
 ## AlphaFold2 Embedding Generator for Protein Sequences
 
 This script downloads, processes, and organizes AlphaFold2 (AF2) embeddings into a format suitable for further analysis or model training. It handles the downloading of zipped AF2 embedding files, unzipping them, padding protein structures, and saving the embeddings in `.npz` format.
@@ -54,7 +62,8 @@ Example:
 ```bash
 python af2_embeddings.py --max_len 500
 ```
-
+&nbsp;
+&nbsp;
 ## ESM-2 Embedding Generator for Protein Sequences
 
 This script generates embeddings for protein sequences using the ESM-2 model. It processes a dataset of protein sequences, filters them based on a specified maximum length, and saves the resulting embeddings along with the corresponding protein IDs.
@@ -74,7 +83,8 @@ Example:
 python esm2_embeddings.py --dataset ../data/my_dataset.csv --prot_len 500
 ```
 
-
+&nbsp;
+&nbsp;
 ## ESM-3 Embedding Generator for Protein Sequences
 
 This script generates embeddings for protein sequences using the ESM-3 model. It processes a dataset of protein sequences, applies padding, and filters sequences based on a specified maximum length. The resulting embeddings are then saved along with the corresponding protein IDs.
@@ -95,7 +105,8 @@ Example:
 python esm3_embeddings.py --dataset ../data/my_dataset.csv --max_len 500 --huggingface_token my_hf_token
 ```
 
-
+&nbsp;
+&nbsp;
 ## ProtT5 Embedding Generator for Protein Sequences
 
 This script generates protein embeddings using the ProtT5 model from the Rostlab. It processes a dataset containing protein sequences, encodes the sequences using the ProtT5 model, and saves the resulting embeddings in `.npz` format.
@@ -115,9 +126,11 @@ Example:
 ```bash
 python prot_t5_embeddings.py --dataset ../data/my_protein_data.csv --prot_len 200
 ```
-
+&nbsp;
+&nbsp;
 # Model & Training
-
+&nbsp;
+&nbsp;
 ## Prot2Mol Pre-Training Script
 
 This script is designed to train and evaluate a GPT-2 model with cross-attention for generating molecular structures based on protein embeddings. The script utilizes SELFIES strings, and the protein embeddings can be derived from various models like ProtT5, ESM, or AlphaFold2 embeddings.
@@ -148,7 +161,8 @@ Example:
 ```bash 
 python pretrain.py --selfies_path ../data/my_selfies_data.csv --prot_emb_model esm3 --prot_ID CHEMBL4296327 --learning_rate 2e-5 --train_batch_size 32 --epoch 30 --n_layer 4 --n_head 8
 ```
-
+&nbsp;
+&nbsp;
 ## Prot2Mol Fine-Tuning Script
 
 This script fine-tunes a pre-trained Prot2Mol model on a specific target protein embedding. The fine-tuning process is tailored to a specific target ID (e.g., a ChEMBL ID) and involves further training the model on a subset of data related to that target.
@@ -179,7 +193,8 @@ Example:
 ```bash
 python prot2mol_finetune_script.py --selfies_path ../data/my_selfies_data.csv --target_id CHEMBL12345 --prot_emb_model esm3 --pretrained_model_path ./saved_models/my_pretrained_model --learning_rate 2e-5 --train_batch_size 32 --epoch 30 --n_layer 6
 ```
-
+&nbsp;
+&nbsp;
 ## Molecule Generation 
 
 This script is designed to generate molecular structures based on a pretrained model and evaluate them against a reference dataset. It loads the necessary protein embeddings and molecular data, generates new molecules, and calculates evaluation metrics. The generated molecules and metrics are then saved to specified files.
