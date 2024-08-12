@@ -1,31 +1,20 @@
 import os 
+import sys
 import math
 import argparse
 import numpy as np
-import pandas as pd
 import selfies as sf
-from datasets import load_from_disk
-from datasets import IterableDataset
 from utils import metrics_calculation
-from data_processing.train_val_test import train_val_test_split
 from transformers import Trainer, TrainingArguments
 from transformers import DataCollatorForLanguageModeling
 from transformers import BartTokenizer, GPT2Config, GPT2LMHeadModel
-
+sys.path.insert(1, '../data_processing')
+import train_val_test
+import torch.distributed
+from data_loader import CustomDataset
+from gpt2_trainer import GPT2_w_crs_attn_Trainer
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["WANDB_DISABLED"] = "false"
-
-class GPT2_w_crs_attn_Trainer(Trainer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def compute_loss(self, model, inputs, return_outputs=False):
-        
-        input_sequence = inputs["input_ids"]
-        last_hidden_state = inputs["encoder_hidden_states"]
-        outputs = model(input_ids=input_sequence, encoder_hidden_states=last_hidden_state, labels=input_sequence)
-        
-        return (outputs.loss, outputs) if return_outputs else outputs.loss
 
 class TrainingScript(object):
     
@@ -34,11 +23,13 @@ class TrainingScript(object):
     def __init__(self, config,
                        selfies_path, 
                        pretrain_save_to,
-                       dataset_name):
+                       dataset_name,
+                       run_name):
         
         self.selfies_path = selfies_path
         self.pretrain_save_to = pretrain_save_to
         self.prot_emb_model = config.prot_emb_model
+        self.run_name = run_name
         
         self.TRAIN_BATCH_SIZE = config.train_batch_size
         self.VALID_BATCH_SIZE = config.valid_batch_size
@@ -48,23 +39,25 @@ class TrainingScript(object):
         self.N_LAYER = config.n_layer
         self.N_HEAD = config.n_head
         
-        self.train_data = pd.read_csv("./data/train.csv")
-        self.eval_data = pd.read_csv('./data/eval.csv')
-        self.training_vec = np.load("./data/train_vecs.npy")
+        self.training_vec = np.load("../data/train_vecs.npy") # write a script for this
         
-        self.train_data, self.eval_data, self.test_data = train_val_test_split(self.data, "CHEMBL4282")
+        self.train_data, self.eval_data, self.test_data = train_val_test.train_val_test_split(config.selfies_path, config.prot_ID)
         
         if "af2" in self.prot_emb_model:
-            self.prot_emb_model_path = f"./data/prot_embed/{self.prot_emb_model}/FoldedPapyrus_4581_v01/embeddings"
+            self.prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/FoldedPapyrus_4581_v01/embeddings"
         else:
-            prot_emb_model_path = f"./data/prot_embed/{self.prot_emb_model}/{dataset_name}/embeddings"
+            prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/{dataset_name}/embeddings.npz"
         
-        self.target_data = load_from_disk(prot_emb_model_path)
-        self.N_EMBED = np.array(self.target_data[0]["encoder_hidden_states"]).shape[-1]
+        self.target_data = np.load(prot_emb_model_path, mmap_mode='r')
+        self.N_EMBED = np.array(self.target_data["encoder_hidden_states"][0]).shape[-1]
+        
         self.tokenizer = BartTokenizer.from_pretrained("zjunlp/MolGen-large", padding_side="left")    
-        self.alphabet =  list(sf.get_alphabet_from_selfies(list(self.train_data.Compound_SELFIES)))
-        self.tokenizer.add_tokens(self.alphabet)
-
+        alphabet =  list(sf.get_alphabet_from_selfies(list(self.train_data.Compound_SELFIES)))
+        self.tokenizer.add_tokens(alphabet)
+        alphabet =  list(sf.get_alphabet_from_selfies(list(self.eval_data.Compound_SELFIES)))
+        self.tokenizer.add_tokens(alphabet)
+        del alphabet
+        
         self.configuration = GPT2Config(add_cross_attention=True, is_decoder = True,
                                 n_embd=self.N_EMBED, n_head=self.N_HEAD, vocab_size=len(self.tokenizer.added_tokens_decoder), 
                                 n_positions=256, n_layer=self.N_LAYER, bos_token_id=self.tokenizer.bos_token_id,
@@ -73,33 +66,29 @@ class TrainingScript(object):
         
         print("Model parameter count:", self.model.num_parameters())
 
-    def gen(self, ligand, target, tokenizer):
-        for i in range(len(ligand)):
-            
-            x = tokenizer(ligand.loc[i]["Compound_SELFIES"], max_length=200, padding="max_length", truncation=True, return_tensors="pt")["input_ids"].squeeze()
-            enc_state = target[target["Target_CHEMBL_ID"].index(ligand.loc[i]["Target_CHEMBL_ID"])]["encoder_hidden_states"]
-            sample = {"input_ids": x, "encoder_hidden_states": enc_state}
-            yield sample 
-
     def compute_metrics(self, eval_pred):
-        logits, labels = eval_pred
-        predictions = np.argmax(logits, axis=-1)
-        labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
-        decoded_preds = self.tokenizer.batch_decode(predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-        decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-        return metrics_calculation(predictions=decoded_preds, references=decoded_labels, train_data = self.train_data, train_vec = self.training_vec)
+        if torch.distributed.get_rank() == 0:
+            logits, labels = eval_pred
+            predictions = np.argmax(logits, axis=-1)
+            labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
+            decoded_preds = self.tokenizer.batch_decode(predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            
+            return metrics_calculation(predictions=decoded_preds, references=decoded_labels, train_data = self.train_data, train_vec = self.training_vec)
+        else: 
+            return {}
 
     def model_training(self):
-        
-        train_dataset = IterableDataset.from_generator(self.gen, gen_kwargs={"ligand": self.train_data, "target": self.target_data, "tokenizer": self.tokenizer})
-        eval_dataset = IterableDataset.from_generator(self.gen, gen_kwargs={"ligand": self.eval_data, "target": self.target_data, "tokenizer": self.tokenizer})
         data_collator = DataCollatorForLanguageModeling(self.tokenizer, mlm=False)
+        
+        train_dataset = CustomDataset(ligand_data=self.train_data, target_data=self.target_data, tokenizer=self.tokenizer, max_length=200)
+        eval_dataset = CustomDataset(ligand_data=self.eval_data, target_data=self.target_data, tokenizer=self.tokenizer, max_length=200)
+        test_dataset = CustomDataset(ligand_data=self.test_data, target_data=self.target_data, tokenizer=self.tokenizer, max_length=200)
         
         self.model.train()
         
-        print("training_len", len(list(self.train_data.Compound_SELFIES)), "\n", "bs", self.TRAIN_BATCH_SIZE, "\n", "epochs", self.TRAIN_EPOCHS, "\n", "steps", round((len(list(self.train_data.Compound_SELFIES))/self.TRAIN_BATCH_SIZE)*self.TRAIN_EPOCHS))
-        
         training_args = TrainingArguments(
+            run_name=self.run_name,
             output_dir=self.pretrain_save_to,
             overwrite_output_dir=True,
             evaluation_strategy="epoch",
@@ -111,9 +100,11 @@ class TrainingScript(object):
             per_device_eval_batch_size=self.VALID_BATCH_SIZE,
             save_total_limit=1,
             disable_tqdm=True,
-            logging_steps=10,
-            max_steps=(len(list(self.train_data.Compound_SELFIES))//self.TRAIN_BATCH_SIZE) * self.TRAIN_EPOCHS,
-            fp16=True)
+            logging_steps=1,
+            #max_steps=(len(list(self.train_data.Compound_SELFIES))//self.TRAIN_BATCH_SIZE) * self.TRAIN_EPOCHS,
+            dataloader_num_workers=4,
+            fp16=True,
+            ddp_find_unused_parameters=False)
 
         trainer = GPT2_w_crs_attn_Trainer(
             model=self.model,
@@ -125,7 +116,7 @@ class TrainingScript(object):
         
         trainer.args._n_gpu = 1
         
-        print("build finetune trainer with on device:", training_args.device, "with n gpus:", training_args.n_gpu)
+        print("build pretrain trainer with on device:", training_args.device, "with n gpus:", training_args.n_gpu)
         trainer.train()
         print("training finished.")
 
@@ -133,6 +124,18 @@ class TrainingScript(object):
         print(f">>> Perplexity: {math.exp(eval_results['eval_loss']):.2f}")
 
         trainer.save_model(self.pretrain_save_to) 
+
+def main(config):
+    dataset_name = config.selfies_path.split("/")[-1].split(".")[0]
+    run_name =  f"""lr_{str(config.learning_rate)}_bs_{str(config.train_batch_size)}_ep_{str(config.epoch)}_wd_{str(config.weight_decay)}_nlayer_{str(config.n_layer)}_nhead_{str(config.n_head)}_prot_{config.prot_emb_model}_dataset_{dataset_name}_testID_{config.prot_ID}"""
+    
+    trainingscript = TrainingScript(config=config, 
+                                    selfies_path=config.selfies_path, 
+                                    pretrain_save_to=f"../saved_models/{run_name}",
+                                    dataset_name = dataset_name,
+                                    run_name=run_name)
+    
+    trainingscript.model_training()
         
 if __name__ == "__main__":
 
@@ -140,10 +143,11 @@ if __name__ == "__main__":
     
     # Dataset parameters
 
-    parser.add_argument("--selfies_path", required=False, default="./data/fasta_to_selfies_500.csv", help="Path of the SELFIES dataset.")
+    parser.add_argument("--selfies_path", required=False, default="../data/papyrus/prot_comp_set_pchembl_8_protlen_150_human_False.csv", help="Path of the SELFIES dataset.")
     parser.add_argument("--prot_emb_model", required=False, default="prot_t5", help="Which protein embedding model to use", choices=["prot_t5", "esm2", "esm3", "af2_single", "af2_struct", "af2_combined"])
-    # Model parameters
+    parser.add_argument("--prot_ID", required=False, default="CHEMBL4296327")
     
+    # Model parameters
     parser.add_argument("--learning_rate", default=1.0e-5)
     parser.add_argument("--max_mol_len", default=200)
     parser.add_argument("--train_batch_size", default=64)
@@ -151,26 +155,11 @@ if __name__ == "__main__":
     parser.add_argument("--epoch", default=50)
     parser.add_argument("--weight_decay", default=0.0005)
     parser.add_argument("--max_positional_emb", default=202)
-    parser.add_argument("--n_layer", default=4)
-    parser.add_argument("--n_head", default=16)
+    parser.add_argument("--n_layer", default=1)
+    parser.add_argument("--n_head", default=4)
     
     config = parser.parse_args()
-    
-    run_name =  f"""lr_{str(config.learning_rate)}
-                    _bs_{str(config.train_batch_size)}
-                    _ep_{str(config.epoch)}
-                    _wd_{str(config.weight_decay)}
-                    _nlayer_{str(config.n_layer)}
-                    _nhead_{str(config.n_head)}
-                    _prot_{config.prot_emb_model}"""
-    
-    dataset_name = config.selfies_path.split("/")[-1].split(".")[0]
-    trainingscript = TrainingScript(hyperparameters_dict=config, 
-                                    selfies_path=config.selfies_path, 
-                                    pretrain_save_to=f"./saved_models/{run_name}",
-                                    dataset_name = dataset_name)
-    
-    trainingscript.model_training()
+    main(config)
 
 
               
