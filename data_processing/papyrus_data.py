@@ -74,8 +74,8 @@ def prepare_papyrus(molecule_url, protein_url, output_directory, pchembl_thresho
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pchembl_threshold",help="pchembl threshold, can be None", type=int, default=8)
-    parser.add_argument("--prot_len", help="Maximum protein length, can be None", type=int, default=150)
+    parser.add_argument("--pchembl_threshold",help="pchembl threshold, can be None", type=int, default=6)
+    parser.add_argument("--prot_len", help="Maximum protein length, can be None", type=int, default=1000)
     parser.add_argument("--human_only", help="Only human proteins", type=bool, default=False)
     config = parser.parse_args()    
     # Create the output directory if it doesn't exist
