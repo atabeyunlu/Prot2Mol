@@ -11,7 +11,7 @@ from transformers import BartTokenizer, GPT2Config, GPT2LMHeadModel
 sys.path.insert(1, '../data_processing')
 import train_val_test
 import torch.distributed
-from data_loader import CustomDataset, MemoryEfficientDataset
+from data_loader import CustomDataset, CustomEffDataset
 from gpt2_trainer import GPT2_w_crs_attn_Trainer
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["WANDB_DISABLED"] = "false"
@@ -43,15 +43,18 @@ class TrainingScript(object):
         print("Load training vectors...\n")
         self.training_vec = np.load("../data/train_vecs.npy") # write a script for this
         print("Load train validation test data...\n")
-        self.train_data, self.eval_data, self.test_data = train_val_test.train_val_test_split(config.selfies_path, config.prot_ID)
+        if config.full_set:
+            print("Loading full dataset...\n")
+            self.train_data, self.eval_data = train_val_test.train_val_test_split(config.selfies_path, config.prot_ID, full_set=config.full_set)
+        else:
+            self.train_data, self.eval_data, self.test_data = train_val_test.train_val_test_split(config.selfies_path, config.prot_ID)
         
         if "af2" in self.prot_emb_model:
-            self.prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/FoldedPapyrus_4581_v01/embeddings.npz"
+            self.prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/FoldedPapyrus_4581_v01/embeddings.h5"
         else:
-            self.prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/{dataset_name}/embeddings.npz"
+            self.prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/{dataset_name}/embeddings_fp16.h5"
         print("Load protein embeddings...\n")
-        self.target_data = np.load(self.prot_emb_model_path, mmap_mode='r', allow_pickle=True)
-        
+       
 
         self.tokenizer = BartTokenizer.from_pretrained("zjunlp/MolGen-large", padding_side="left")    
         alphabet =  list(sf.get_alphabet_from_selfies(list(self.train_data.Compound_SELFIES)))
@@ -84,9 +87,9 @@ class TrainingScript(object):
     def model_training(self):
         data_collator = DataCollatorForLanguageModeling(self.tokenizer, mlm=False)
         print("Build train datasets...\n")
-        train_dataset = MemoryEfficientDataset(ligand_data=self.train_data, target_data=self.target_data, tokenizer=self.tokenizer, max_length=self.max_mol_len)
+        train_dataset = CustomEffDataset(ligand_data=self.train_data, target_data=self.prot_emb_model_path, tokenizer=self.tokenizer, max_length=self.max_mol_len)
         print("Build eval datasets...\n")
-        eval_dataset = MemoryEfficientDataset(ligand_data=self.eval_data, target_data=self.target_data, tokenizer=self.tokenizer, max_length=self.max_mol_len)
+        eval_dataset = CustomEffDataset(ligand_data=self.eval_data, target_data=self.prot_emb_model_path, tokenizer=self.tokenizer, max_length=self.max_mol_len)
         print("Build test datasets...\n")
         #test_dataset = MemoryEfficientDataset(ligand_data=self.test_data, target_data=self.target_data, tokenizer=self.tokenizer, max_length=self.max_mol_len)
         
@@ -107,7 +110,7 @@ class TrainingScript(object):
             disable_tqdm=True,
             logging_steps=10,
             #max_steps=(len(list(self.train_data.Compound_SELFIES))//self.TRAIN_BATCH_SIZE) * self.TRAIN_EPOCHS,
-            dataloader_num_workers=15,
+            dataloader_num_workers=10,
             fp16=True,
             ddp_find_unused_parameters=False)
 
@@ -132,7 +135,10 @@ class TrainingScript(object):
 
 def main(config):
     dataset_name = config.selfies_path.split("/")[-1].split(".")[0]
-    run_name =  f"""lr_{str(config.learning_rate)}_bs_{str(config.train_batch_size)}_ep_{str(config.epoch)}_wd_{str(config.weight_decay)}_nlayer_{str(config.n_layer)}_nhead_{str(config.n_head)}_prot_{config.prot_emb_model}_dataset_{dataset_name}_testID_{config.prot_ID}"""
+    if config.full_set:
+        run_name =  f"""lr_{str(config.learning_rate)}_bs_{str(config.train_batch_size)}_ep_{str(config.epoch)}_wd_{str(config.weight_decay)}_nlayer_{str(config.n_layer)}_nhead_{str(config.n_head)}_prot_{config.prot_emb_model}_dataset_{dataset_name}_fp16"""
+    else:
+        run_name =  f"""lr_{str(config.learning_rate)}_bs_{str(config.train_batch_size)}_ep_{str(config.epoch)}_wd_{str(config.weight_decay)}_nlayer_{str(config.n_layer)}_nhead_{str(config.n_head)}_prot_{config.prot_emb_model}_dataset_{dataset_name}_testID_{config.prot_ID}"""
     
     trainingscript = TrainingScript(config=config, 
                                     selfies_path=config.selfies_path, 
@@ -148,10 +154,10 @@ if __name__ == "__main__":
     
     # Dataset parameters
 
-    parser.add_argument("--selfies_path", required=False, default="../data/papyrus/prot_comp_set_pchembl_6_protlen_1000_human_False.csv", help="Path of the SELFIES dataset.")
-    parser.add_argument("--prot_emb_model", required=False, default="prot_t5", help="Which protein embedding model to use", choices=["prot_t5", "esm2", "esm3", "af2_single", "af2_struct", "af2_combined"])
+    parser.add_argument("--selfies_path", required=False, default="../data/papyrus/prot_comp_set_pchembl_6_protlen_1000_human_False/af2_filtered.csv", help="Path of the SELFIES dataset.")
+    parser.add_argument("--prot_emb_model", required=False, default="af2_combined", help="Which protein embedding model to use", choices=["prot_t5", "esm2", "esm3", "af2_single", "af2_struct", "af2_combined"])
     parser.add_argument("--prot_ID", required=False, default="CHEMBL4282")
-    
+    parser.add_argument("--full_set", required=False, default=False, help="Use full dataset.")
     # Model parameters
     parser.add_argument("--learning_rate", default=1.0e-5)
     parser.add_argument("--max_mol_len", default=200)
@@ -162,7 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_positional_emb", default=202)
     parser.add_argument("--n_layer", default=4)
     parser.add_argument("--n_head", default=16)
-    parser.add_argument("--n_emb", default=1024) # prot_t5=1024
+    parser.add_argument("--n_emb", default=768) # prot_t5=1024, esm2=1280, esm3=1024, af2_single=384, af2_struct=384, af2_combined=768
     
     
     config = parser.parse_args()

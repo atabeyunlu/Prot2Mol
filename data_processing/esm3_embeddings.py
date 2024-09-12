@@ -10,7 +10,7 @@ from huggingface_hub import login
 from esm.tokenization import get_model_tokenizers
 from esm.utils.constants.models import ESM3_OPEN_SMALL
 from esm.sdk.api import (ESMProtein,ESMProteinTensor,SamplingConfig,SamplingTrackConfig,)
-
+import os
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -98,13 +98,15 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     # Dataset parameters
-    parser.add_argument("--dataset", required=False, default="../data/papyrus/prot_comp_set_pchembl_6_protlen_500.csv", help="Path of the SELFIES dataset.")
-    parser.add_argument("--max_len", required=False,type=int, default=500, help="Maximum protein length")
+    parser.add_argument("--dataset", required=False, default="../data/papyrus/prot_comp_set_pchembl_6_protlen_1000_human_False/test_CHEMBL4282.csv", help="Path of the SELFIES dataset.")
+    parser.add_argument("--max_len", required=False,type=int, default=1000, help="Maximum protein length")
     parser.add_argument("--huggingface_token", required=True, default="<token>", help="User huggingface token (read only)")    
     config = parser.parse_args()    
-    
+
     login(token=config.huggingface_token, add_to_git_credential=True)
     dataset_name = config.dataset.split("/")[-1].split(".")[0]
+    if not os.path.exists("../data/prot_embed/esm3/" + dataset_name + "/unique_target.csv"):
+        os.makedirs(os.path.dirname("../data/prot_embed/esm3/" + dataset_name + "/unique_target.csv"), exist_ok=True)
     data = pd.read_csv(config.dataset)
     unique_target  = data.drop_duplicates(subset=['Target_CHEMBL_ID'])[["Target_CHEMBL_ID", "Target_FASTA"]]
     unique_target["len"] = unique_target["Target_FASTA"].apply(lambda x: len(x))

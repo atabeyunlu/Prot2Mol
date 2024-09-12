@@ -162,7 +162,8 @@ def average_agg_tanimoto(stock_vecs, gen_vecs,
     return np.mean(agg_tanimoto) if no_list else np.mean(agg_tanimoto), agg_tanimoto
 
 def generate_vecs(mols):
-    return np.array([AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=1024) if mol is not None else None for mol in mols])
+    zero_vec = np.zeros(1024)
+    return np.array([AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=1024) if mol is not None else zero_vec for mol in mols])
 
 def to_mol(smiles_list):
     return [Chem.MolFromSmiles(smiles) for smiles in smiles_list]
@@ -192,13 +193,13 @@ def metrics_calculation(predictions, references, train_data, train_vec,training=
         training_data_smiles = [sf.decoder(x) for x in train_data.Compound_SELFIES]
         reference_smiles = [sf.decoder(x) for x in references] 
         
-        prediction_uniqueness_ratio = fraction_unique(prediction_smiles)
+        prediction_uniqueness_ratio = fraction_unique(prediction_smiles["smiles"])
         
         prediction_smiles_novelty_against_training_samples = novelty(list(prediction_smiles["smiles"]), training_data_smiles)
         prediction_smiles_novelty_against_reference_samples = novelty(list(prediction_smiles["smiles"]), reference_smiles)
         
-        prediction_vecs = np.array(generate_vecs(prediction_mols))
-        reference_vec = np.array(generate_vecs([Chem.MolFromSmiles(x) for x in reference_smiles if Chem.MolFromSmiles(x) is not None]))
+        prediction_vecs = generate_vecs(prediction_mols)
+        reference_vec = generate_vecs([Chem.MolFromSmiles(x) for x in reference_smiles if Chem.MolFromSmiles(x) is not None])
         
         predicted_vs_reference_sim_mean, predicted_vs_reference_sim_list = average_agg_tanimoto(reference_vec,prediction_vecs, no_list=False)
         predicted_vs_training_sim_mean, predicted_vs_training_sim_list = average_agg_tanimoto(train_vec,prediction_vecs, no_list=False)
@@ -242,15 +243,16 @@ def metrics_calculation(predictions, references, train_data, train_vec,training=
         return metrics
     else:
         
-        result_dict = {"smiles": prediction_smiles, 
+        result_dict = {"smiles": prediction_smiles["smiles"],
                        "test_sim": predicted_vs_reference_sim_list, 
                        "train_sim": predicted_vs_training_sim_list,
-                       #"sa_score": prediction_sa_score_list,
+                       "sa_score": prediction_sa_score_list,
                        "qed_score": prediction_qed_score_list,
-                       "logp_score": prediction_logp_score_list}
-        results = pd.DataFrame(result_dict)
+                       "logp_score": prediction_logp_score_list
+                       }
+        results = pd.DataFrame.from_dict(result_dict)
         
-        return metrics, prediction_smiles, results
+        return metrics, results
         
 
 

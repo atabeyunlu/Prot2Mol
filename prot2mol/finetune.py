@@ -13,8 +13,9 @@ import torch.distributed
 import sys
 sys.path.insert(1, '../data_processing')
 import train_val_test
-from data_loader import CustomDataset
+from data_loader import CustomDataset, CustomEffDataset
 from gpt2_trainer import GPT2_w_crs_attn_Trainer
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["WANDB_DISABLED"] = "false"
 
@@ -34,25 +35,26 @@ class FinetuneScript(object):
         self.model_name = model_name
         self.prot_emb_model = config.prot_emb_model
         self.run_name = run_name
+        self.max_mol_len = config.max_mol_len
 
         self.TRAIN_BATCH_SIZE = config.train_batch_size
         self.VALID_BATCH_SIZE = config.valid_batch_size
         self.TRAIN_EPOCHS = config.epoch
         self.LEARNING_RATE = config.learning_rate
         self.WEIGHT_DECAY = config.weight_decay
-        self.N_LAYER = config.n_layer
 
         self.training_vec = np.load("../data/train_vecs.npy")
         
-        self.train_data, self.eval_data, self.test_data = train_val_test.train_val_test_split(config.selfies_path, config.prot_ID)
+        self.train_data, self.eval_data, self.test_data = train_val_test.train_val_test_split(config.selfies_path, config.target_id)
 
         if "af2" in self.prot_emb_model:
-            self.prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/FoldedPapyrus_4581_v01/embeddings"
+            self.prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/FoldedPapyrus_4581_v01/embeddings.npz"
         else:
-            prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/{dataset_name}/embeddings.npz"
+            self.prot_emb_model_path = f"../data/prot_embed/{self.prot_emb_model}/{dataset_name}/embeddings_fp16.h5"
+        print(f"Load protein embeddings {self.prot_emb_model_path}...\n")
         
-        self.target_data = np.load(prot_emb_model_path, mmap_mode='r')
-        self.N_EMBED = np.array(self.target_data["encoder_hidden_states"][0]).shape[-1]
+        #self.target_data = np.load(prot_emb_model_path, mmap_mode='r')
+        #self.N_EMBED = np.array(self.target_data["encoder_hidden_states"][0]).shape[-1]
         
         self.tokenizer = BartTokenizer.from_pretrained("zjunlp/MolGen-large", padding_side="left")    
         alphabet =  list(sf.get_alphabet_from_selfies(list(self.train_data.Compound_SELFIES)))
@@ -65,27 +67,26 @@ class FinetuneScript(object):
             
         self.model = GPT2LMHeadModel.from_pretrained(self.model_name)
         
-        print("Model parameter count:", self.model.num_parameters())
+        print("Model parameter count:", format(self.model.num_parameters(), "_d"))
 
     def compute_metrics(self, eval_pred):
-        if torch.distributed.get_rank() == 0:
-            logits, labels = eval_pred
-            predictions = np.argmax(logits, axis=-1)
-            labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
-            decoded_preds = self.tokenizer.batch_decode(predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-            decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-            
-            return metrics_calculation(predictions=decoded_preds, references=decoded_labels, train_data = self.train_data, train_vec = self.training_vec)
-        else: 
-            return {}
+        #if torch.distributed.get_rank() == 0:
+        logits, labels = eval_pred
+        predictions = np.argmax(logits, axis=-1)
+        labels = np.where(labels != -100, labels, self.tokenizer.pad_token_id)
+        decoded_preds = self.tokenizer.batch_decode(predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+        decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True, clean_up_tokenization_spaces=True)
         
-    def finetune_with_target(self, target_id):
+        return metrics_calculation(predictions=decoded_preds, references=decoded_labels, train_data = self.train_data, train_vec = self.training_vec)
+
+        
+    def finetune_with_target(self):
         
         finetune_data = self.test_data
         self.alphabet =  list(sf.get_alphabet_from_selfies(list(finetune_data.Compound_SELFIES)))
         self.tokenizer.add_tokens(self.alphabet)
         
-        finetune_dataset = CustomDataset(ligand_data=finetune_data, target_data=self.target_data, tokenizer=self.tokenizer, max_length=200)
+        finetune_dataset = CustomEffDataset(ligand_data=finetune_data, target_data=self.prot_emb_model_path, tokenizer=self.tokenizer, max_length=self.max_mol_len)
         data_collator = DataCollatorForLanguageModeling(self.tokenizer, mlm=False)
         
         self.model.train()
@@ -94,7 +95,8 @@ class FinetuneScript(object):
             run_name=self.run_name,
             output_dir=self.finetune_save_to,
             overwrite_output_dir=True,
-            evaluation_strategy="epoch",
+            evaluation_strategy="steps", #evaluate every 10 epoch
+            eval_steps=200,
             save_strategy="epoch",
             num_train_epochs=self.TRAIN_EPOCHS,
             learning_rate=self.LEARNING_RATE,
@@ -104,7 +106,7 @@ class FinetuneScript(object):
             save_total_limit=1,
             disable_tqdm=True,
             logging_steps=10,
-            dataloader_num_workers=4,
+            dataloader_num_workers=10,
             fp16=True,
             ddp_find_unused_parameters=False)
 
@@ -130,17 +132,21 @@ class FinetuneScript(object):
         finetune_trainer.save_model(self.finetune_save_to)      
  
 def main(config):
-    run_name = f"""TARGET_{str(config.target_id)}_lr_{str(config.learning_rate)}_bs_{str(config.train_batch_size)}_ep_{str(config.epoch)}_wd_{str(config.weight_decay)}_nlayer_{str(config.n_layer)}"""
-    dataset_name = config.selfies_path.split("/")[-1].split(".")[0]
+    pretrain_model = config.pretrained_model_path.split("/")[-2]
+    run_name = f"""TARGET_{str(config.target_id)}_lr_{str(config.learning_rate)}_bs_{str(config.train_batch_size)}_ep_{str(config.epoch)}_wd_{str(config.weight_decay)}"""
+    if config.prot_dataset_name is None:
+        dataset_name = config.selfies_path.split("/")[-1].split(".")[0]
+    else:
+        dataset_name = config.prot_dataset_name
     
     trainingscript = FinetuneScript(config=config, 
                                     selfies_path=config.selfies_path, 
-                                    finetune_save_to=f"./finetuned_models/{run_name}",
+                                    finetune_save_to=f"../finetuned_models/{pretrain_model}/{run_name}",
                                     model_name = config.pretrained_model_path,
                                     dataset_name=dataset_name,
                                     run_name=run_name)
     
-    trainingscript.finetune_with_target(config.target_id)
+    trainingscript.finetune_with_target()
     
         
 if __name__ == "__main__":
@@ -149,12 +155,12 @@ if __name__ == "__main__":
     
     # Dataset parameters
     
-    parser.add_argument("--selfies_path", required=False, default="../data/fasta_to_selfies_500.csv", help="Path of the SELFIES dataset.")
+    parser.add_argument("--selfies_path", required=False, default="../data/papyrus/prot_comp_set_pchembl_6_protlen_1000_human_False.csv", help="Path of the SELFIES dataset.")
     parser.add_argument("--target_id", default="CHEMBL4282", help="Target ID (ChEMBL_ID) to finetune on.")
-    parser.add_argument("--prot_emb_model", required=False, default="prot_t5", help="Which protein embedding model to use", choices=["prot_t5", "esm2", "esm3", "af2_single", "af2_struct", "af2_combined"])
+    parser.add_argument("--prot_emb_model", required=False, default="esm2", help="Which protein embedding model to use", choices=["prot_t5", "esm2", "esm3", "af2_single", "af2_struct", "af2_combined"])
     # Model parameters
-    
-    parser.add_argument("--pretrained_model_path", default="./saved_models/set_100_saved_model/checkpoint-31628")
+    parser.add_argument("--prot_dataset_name", default=None)
+    parser.add_argument("--pretrained_model_path", default="../saved_models/lr_1e-05_bs_64_ep_50_wd_0.0005_nlayer_4_nhead_16_prot_esm2_dataset_prot_comp_set_pchembl_6_protlen_1000_human_False_fp16/checkpoint-294600")
     
     parser.add_argument("--learning_rate", default=1.0e-5)
     parser.add_argument("--max_mol_len", default=200)
@@ -164,6 +170,8 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", default=0.0005)
     parser.add_argument("--max_positional_emb", default=202)
     parser.add_argument("--n_layer", default=4)
+    parser.add_argument("--n_head", default=16)
+    parser.add_argument("--n_emb", default=1280) # prot_t5=1024, esm2=1280
 
     
     config = parser.parse_args()
