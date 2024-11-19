@@ -190,7 +190,7 @@ def metrics_calculation(predictions, references, train_data, train_vec=None,trai
         
         prediction_mols = to_mol(list(prediction_smiles["smiles"]))
     
-        training_data_smiles = [sf.decoder(x) for x in train_data.Compound_SELFIES]
+        training_data_smiles = [sf.decoder(x) for x in train_data["Compound_SELFIES"]]
         reference_smiles = [sf.decoder(x) for x in references] 
         
         prediction_uniqueness_ratio = fraction_unique(prediction_smiles["smiles"])
